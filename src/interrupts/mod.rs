@@ -1,6 +1,8 @@
 use crate::{debug_write_line, memory::{mapper, GiB, KERNEL_CODE_SELECTOR, PAGE_SIZE}};
 use core::{mem, ptr, slice};
 
+pub mod apic;
+
 extern "C" {
     fn interrupts_set_idtr(idtr: u64);
     fn interrupts_enable();

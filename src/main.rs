@@ -58,7 +58,8 @@ pub struct GraphicsInfo {
 pub struct BootInfo {
     pub regions: Regions,
     pub kernel_regions: Regions,
-    pub graphics: GraphicsInfo
+    pub graphics: GraphicsInfo,
+    pub rsdp_physical_address: u64
 }
 
 pub mod debug;
@@ -128,6 +129,7 @@ pub unsafe extern "C" fn _start(info_pointer: *const BootInfo) -> ! {
     allocate_physical_memory_manager(&info);
 
     interrupts::initialize();
+    interrupts::apic::initialize(PhysicalAddress::new(info.rsdp_physical_address as usize));
 
     debug_write_line!("Done.");
 
