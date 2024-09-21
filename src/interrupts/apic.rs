@@ -1,7 +1,21 @@
-use crate::{debug_write_line, memory::{mapper, PhysicalAddress}};
+use crate::{debug_write_line, interrupts::ioapic::IOAPIC, low::ports, memory::{mapper, PhysicalAddress}};
 use core::{mem, slice, ptr};
 
+use super::MAX_INTERRUPT_COUNT;
+
 const MAX_LOCAL_APIC_COUNT: usize = 256;
+
+const APIC_BASE_MSR: usize = 0x1B;
+const APIC_BASE_MSR_ENABLE: u64 = 0x800;
+
+const SPURIOUS_INTERRUPT_VECTOR_REGISTER_OFFSET: usize = 0xf0;
+const ENABLE_APIC_FLAG: u32 = 0x100;
+
+extern "C" {
+    // Note: MSR = Model Specific Register
+    fn write_msr(id: usize, value: u64);
+    fn read_msr(id: usize) -> u64;
+}
 
 #[repr(C)]
 pub struct SDTHeader {
@@ -145,8 +159,8 @@ impl RSDP20 {
 struct APICInfo {
     pub local_apic_ids: [u8; MAX_LOCAL_APIC_COUNT],
     pub local_apic_count: usize,
-    pub local_apic_registers: *mut u8,
-    pub ioapic_registers: *mut u8
+    pub local_apic_registers: *mut u32,
+    pub ioapic_registers: *mut u32
 }
 
 impl APICInfo {
@@ -165,7 +179,7 @@ impl MADT {
         debug_write_line!("MADT: Processing entries...");
 
         let mut info = APICInfo::new();
-        info.local_apic_registers = mapper::to_kernel_mut(self.local_apic_address as *mut u8);
+        info.local_apic_registers = mapper::to_kernel_mut(self.local_apic_address as *mut u32);
 
         let end = position.add(self.header.length as usize - mem::size_of::<MADT>());
 
@@ -186,13 +200,15 @@ impl MADT {
 
                     // Todo: Support multiple IOAPICs
                     if info.ioapic_registers == ptr::null_mut() {
-                        info.ioapic_registers = ioapic_entry.address as *mut u8;
+                        info.ioapic_registers = ioapic_entry.address as *mut u32;
                     }
                 },
                 5 => {
                     let local_apic_address_override_entry = &*(position as *const LocalAPICAddressOverrideEntry);
                     debug_write_line!("MADT: Entry: {:?}", local_apic_address_override_entry);
-                    info.local_apic_registers = mapper::to_kernel_mut(local_apic_address_override_entry.address as *mut u8);
+                    info.local_apic_registers = mapper::to_kernel_mut(
+                        local_apic_address_override_entry.address as *mut u32
+                    );
                 },
                 _ => {
                     debug_write_line!("MADT: Unprocessed entry with id of {}", entry.kind);
@@ -208,6 +224,44 @@ impl MADT {
     }
 }
 
+unsafe fn set_apic_base(base: u64) {
+    let value = (base & 0xffffff0000) | APIC_BASE_MSR_ENABLE;
+    write_msr(APIC_BASE_MSR, value);
+}
+
+unsafe fn get_apic_base() -> u64 {
+    let value = read_msr(APIC_BASE_MSR);
+    value & 0xffffff0000
+}
+
+unsafe fn enable() {
+    // Disable 8259 PIC:
+    // mov al, 0xff
+    // out 0xa1, al
+    // out 0x21, al
+    debug_write_line!("APIC: Disabling 8259 PIC...");
+    ports::write_u8(0xa1, 0xff);
+    ports::write_u8(0x21, 0xff);
+
+    debug_write_line!("APIC: Enabling APIC...");
+    let base = get_apic_base();
+    // Todo: Map uncached
+    set_apic_base(base);
+}
+
+unsafe fn enable_interrupts(local_apic_registers: *mut u32) {
+    let register = local_apic_registers.byte_add(SPURIOUS_INTERRUPT_VECTOR_REGISTER_OFFSET);
+
+    // Map spurious interrupts to a specific interrupt number?
+    // Note: Spurious interrupt usually means an interrupt whose origin is unknown
+    let spurious_interrupt_number = (MAX_INTERRUPT_COUNT - 1) as u32;
+
+    let mut value = *register;
+    value |= spurious_interrupt_number;
+    value |= ENABLE_APIC_FLAG;
+    *register = value;
+}
+
 pub unsafe fn initialize_unsafe(rsdp_physical_address: PhysicalAddress) {
     debug_write_line!("APIC: RSDP={:#X}", rsdp_physical_address.value());
 
@@ -219,6 +273,14 @@ pub unsafe fn initialize_unsafe(rsdp_physical_address: PhysicalAddress) {
 
     debug_write_line!("APIC: MADT={:p}", madt_pointer);
     debug_write_line!("APIC: 8259 PIC = {}", (madt.flags & 1) != 0);
+
+    enable();
+    enable_interrupts(apic_info.local_apic_registers);
+
+    let ioapic = IOAPIC::new(apic_info.ioapic_registers);
+
+    // Enable PS/2 keyboard
+    ioapic.redirect(1, 0);
 }
 
 pub fn initialize(rsdp_physical_address: PhysicalAddress) {

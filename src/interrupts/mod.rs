@@ -2,6 +2,7 @@ use crate::{debug_write_line, memory::{mapper, GiB, KERNEL_CODE_SELECTOR, PAGE_S
 use core::{mem, ptr, slice};
 
 pub mod apic;
+pub mod ioapic;
 
 extern "C" {
     fn interrupts_set_idtr(idtr: u64);
@@ -12,6 +13,8 @@ extern "C" {
     static mut interrupts_tables: [u8; 0x3000];
 }
 
+// Todo: Should this be dynamic or is it just related to exception count on x64?
+const INTERRUPT_BASE: u8 = 0x20;
 const MAX_INTERRUPT_COUNT: usize = 256;
 const EXCEPTION_COUNT: usize = 32;
 const IDT_SIZE: usize = MAX_INTERRUPT_COUNT * mem::size_of::<IDT>();
