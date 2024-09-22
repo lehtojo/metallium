@@ -1,5 +1,8 @@
+#![feature(box_as_ptr)]
+
 #![no_std]
 #![no_main]
+extern crate alloc;
 
 use core::panic::PanicInfo;
 
@@ -67,8 +70,8 @@ pub mod interrupts;
 pub mod low;
 pub mod memory;
 
-use low::x64::serial;
-use memory::{physical_buddy_allocator, PhysicalAddress};
+use low::{x64::serial, processor::Processor};
+use memory::{physical_buddy_allocator, PhysicalAddress, VirtualAddress};
 
 unsafe fn clear_screen(info: &BootInfo) {
     for y in 0..info.graphics.height {
@@ -119,6 +122,11 @@ unsafe fn allocate_physical_memory_manager(info: &BootInfo) {
     }
 }
 
+// Todo: We need larger stack
+#[repr(align(16))]
+struct KernelStack([u8; 0x2000]);
+static KERNEL_STACK: KernelStack = KernelStack([0; 0x2000]);
+
 #[no_mangle]
 pub unsafe extern "C" fn _start(info_pointer: *const BootInfo) -> ! {
     debug_write_line!("Boot: Entered the kernel :^)");
@@ -130,6 +138,10 @@ pub unsafe extern "C" fn _start(info_pointer: *const BootInfo) -> ! {
 
     interrupts::initialize();
     interrupts::apic::initialize(PhysicalAddress::new(info.rsdp_physical_address as usize));
+
+    // Todo: Allocate the stack?
+    let kernel_stack = KERNEL_STACK.0.as_ptr() as usize;
+    let _ = Processor::create(VirtualAddress::new(kernel_stack), VirtualAddress::null(), 0);
 
     debug_write_line!("Done.");
 

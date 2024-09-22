@@ -1,4 +1,4 @@
-use crate::{debug_write_line, interrupts::ioapic::IOAPIC, low::ports, memory::{mapper, PhysicalAddress}};
+use crate::{debug_write_line, interrupts::ioapic::IOAPIC, low::{ports, x64::{read_msr, write_msr}}, memory::{mapper, PhysicalAddress, paging_table::PagingFlags}};
 use core::{mem, slice, ptr};
 
 use super::MAX_INTERRUPT_COUNT;
@@ -10,12 +10,6 @@ const APIC_BASE_MSR_ENABLE: u64 = 0x800;
 
 const SPURIOUS_INTERRUPT_VECTOR_REGISTER_OFFSET: usize = 0xf0;
 const ENABLE_APIC_FLAG: u32 = 0x100;
-
-extern "C" {
-    // Note: MSR = Model Specific Register
-    fn write_msr(id: usize, value: u64);
-    fn read_msr(id: usize) -> u64;
-}
 
 #[repr(C)]
 pub struct SDTHeader {
@@ -179,7 +173,8 @@ impl MADT {
         debug_write_line!("MADT: Processing entries...");
 
         let mut info = APICInfo::new();
-        info.local_apic_registers = mapper::to_kernel_mut(self.local_apic_address as *mut u32);
+        let local_apic_registers = mapper::map_kernel_page(PhysicalAddress::new(self.local_apic_address as usize), PagingFlags::NoCache);
+        info.local_apic_registers = local_apic_registers.value() as *mut u32;
 
         let end = position.add(self.header.length as usize - mem::size_of::<MADT>());
 
@@ -200,15 +195,19 @@ impl MADT {
 
                     // Todo: Support multiple IOAPICs
                     if info.ioapic_registers == ptr::null_mut() {
-                        info.ioapic_registers = ioapic_entry.address as *mut u32;
+                        let ioapic_registers = mapper::map_kernel_page(PhysicalAddress::new(ioapic_entry.address as usize), PagingFlags::NoCache);
+                        info.ioapic_registers = ioapic_registers.value() as *mut u32;
                     }
                 },
                 5 => {
                     let local_apic_address_override_entry = &*(position as *const LocalAPICAddressOverrideEntry);
                     debug_write_line!("MADT: Entry: {:?}", local_apic_address_override_entry);
-                    info.local_apic_registers = mapper::to_kernel_mut(
-                        local_apic_address_override_entry.address as *mut u32
+
+                    let local_apic_address_override = mapper::map_kernel_page(
+                        PhysicalAddress::new(local_apic_address_override_entry.address as usize),
+                        PagingFlags::NoCache
                     );
+                    info.local_apic_registers = local_apic_address_override.value() as *mut u32;
                 },
                 _ => {
                     debug_write_line!("MADT: Unprocessed entry with id of {}", entry.kind);
@@ -245,7 +244,7 @@ unsafe fn enable() {
 
     debug_write_line!("APIC: Enabling APIC...");
     let base = get_apic_base();
-    // Todo: Map uncached
+    mapper::map_kernel_page(PhysicalAddress::new(base as usize), PagingFlags::NoCache);
     set_apic_base(base);
 }
 

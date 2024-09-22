@@ -1,5 +1,6 @@
 pub mod kernel_allocator;
 pub mod mapper;
+pub mod paging_table;
 pub mod physical_buddy_allocator;
 pub mod physical_slab_allocator;
 
@@ -31,6 +32,10 @@ impl PhysicalAddress {
     pub fn is_aligned(self, alignment: usize) -> bool {
         assert!((alignment & (alignment - 1)) == 0, "Alignment must be power of two");
         (self.0 & (alignment - 1)) == 0
+    }
+
+    pub fn is_page_aligned(self) -> bool {
+        self.is_aligned(PAGE_SIZE)
     }
 
     pub fn align(self, alignment: usize) -> Self {
@@ -82,6 +87,10 @@ impl VirtualAddress {
     pub fn is_aligned(self, alignment: usize) -> bool {
         assert!((alignment & (alignment - 1)) == 0, "Alignment must be power of two");
         (self.0 & (alignment - 1)) == 0
+    }
+
+    pub fn is_page_aligned(self) -> bool {
+        self.is_aligned(PAGE_SIZE)
     }
 
     pub fn align(self, alignment: usize) -> Self {

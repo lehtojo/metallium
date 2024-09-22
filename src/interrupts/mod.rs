@@ -26,13 +26,13 @@ enum GateKind {
     Trap = 0xf
 }
 
-#[repr(C)]
+#[repr(packed)]
 struct IDTR {
     size: u16,
     table: u64
 }
 
-#[repr(C)]
+#[repr(packed)]
 #[derive(Clone)]
 struct IDT {
     offset_1: u16,
@@ -63,7 +63,6 @@ unsafe fn initialize_unsafe(
     idt_address: u64,
     interrupt_stubs_address: u64
 ) {
-    // Todo: We aren't using kernel addresses here and we currently crash probably to the isize cast do to inconsistency
     debug_write_line!("Interrupts: Initializing interrupt tables...");
     debug_write_line!("Interrupts: IDTR: {:#X}", idtr_address);
     debug_write_line!("Interrupts: IDT: {:#X}", idt_address);
@@ -186,4 +185,5 @@ pub fn disable() {
 #[no_mangle]
 pub fn interrupts_kernel_entry() {
     debug_write_line!("Hello Interrupt :^)");
+    loop {}
 }
