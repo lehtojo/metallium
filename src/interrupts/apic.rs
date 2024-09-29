@@ -173,7 +173,10 @@ impl MADT {
         debug_write_line!("MADT: Processing entries...");
 
         let mut info = APICInfo::new();
-        let local_apic_registers = mapper::map_kernel_page(PhysicalAddress::new(self.local_apic_address as usize), PagingFlags::NoCache);
+        let local_apic_registers = mapper::map_kernel_page_unaligned(
+            PhysicalAddress::new(self.local_apic_address as usize),
+            PagingFlags::NoCache
+        );
         info.local_apic_registers = local_apic_registers.value() as *mut u32;
 
         let end = position.add(self.header.length as usize - mem::size_of::<MADT>());
@@ -195,7 +198,10 @@ impl MADT {
 
                     // Todo: Support multiple IOAPICs
                     if info.ioapic_registers == ptr::null_mut() {
-                        let ioapic_registers = mapper::map_kernel_page(PhysicalAddress::new(ioapic_entry.address as usize), PagingFlags::NoCache);
+                        let ioapic_registers = mapper::map_kernel_page_unaligned(
+                            PhysicalAddress::new(ioapic_entry.address as usize),
+                            PagingFlags::NoCache
+                        );
                         info.ioapic_registers = ioapic_registers.value() as *mut u32;
                     }
                 },
@@ -203,7 +209,7 @@ impl MADT {
                     let local_apic_address_override_entry = &*(position as *const LocalAPICAddressOverrideEntry);
                     debug_write_line!("MADT: Entry: {:?}", local_apic_address_override_entry);
 
-                    let local_apic_address_override = mapper::map_kernel_page(
+                    let local_apic_address_override = mapper::map_kernel_page_unaligned(
                         PhysicalAddress::new(local_apic_address_override_entry.address as usize),
                         PagingFlags::NoCache
                     );
@@ -244,7 +250,7 @@ unsafe fn enable() {
 
     debug_write_line!("APIC: Enabling APIC...");
     let base = get_apic_base();
-    mapper::map_kernel_page(PhysicalAddress::new(base as usize), PagingFlags::NoCache);
+    mapper::map_kernel_page_unaligned(PhysicalAddress::new(base as usize), PagingFlags::NoCache);
     set_apic_base(base);
 }
 

@@ -71,7 +71,7 @@ pub mod low;
 pub mod memory;
 
 use low::{x64::serial, processor::Processor};
-use memory::{physical_buddy_allocator, PhysicalAddress, VirtualAddress};
+use memory::{mapper, physical_buddy_allocator, PhysicalAddress, VirtualAddress};
 
 unsafe fn clear_screen(info: &BootInfo) {
     for y in 0..info.graphics.height {
@@ -138,7 +138,7 @@ pub unsafe extern "C" fn _start(info_pointer: *const BootInfo) -> ! {
 
     // We can't rely on the paging table provided by UEFI, because
     // the table might use gigantic pages (1 GiB)
-    // mapper::switch_to_kernel_paging_table(max_available_physical_address);
+    mapper::switch_to_kernel_paging_table(max_available_physical_address);
 
     interrupts::initialize();
     interrupts::apic::initialize(PhysicalAddress::new(info.rsdp_physical_address as usize));

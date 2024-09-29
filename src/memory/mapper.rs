@@ -4,6 +4,7 @@ use super::{PhysicalAddress, VirtualAddress, paging_table::PagingFlags};
 use crate::{low::x64::kernel_paging_table, memory::{paging_table::{PagingEntryFlags, PagingTable}, PAGE_SIZE}};
 use core::mem;
 
+const KERNEL_ENTRY_INDEX: usize = 0x100;
 const KERNEL_MAP_BASE: usize = 0xFFFF800000000000;
 
 pub const fn to_kernel_address(pointer: usize) -> usize {
@@ -26,14 +27,24 @@ pub const fn is_kernel_address(value: usize) -> bool {
     (value & KERNEL_MAP_BASE) == KERNEL_MAP_BASE
 }
 
-pub fn to_physical_address(value: usize) -> usize {
+pub const fn to_physical_address(value: usize) -> usize {
     value & !KERNEL_MAP_BASE
 }
 
-pub fn map_kernel_page(physical_address: PhysicalAddress, flags: PagingFlags) -> VirtualAddress {
-    let mut paging_table = kernel_paging_table();
+// Todo: Refactor address types to use u64
+pub fn to_physical_address_u64(value: u64) -> u64 {
+    value & !(KERNEL_MAP_BASE as u64)
+}
+
+pub fn map_kernel_page_unaligned(physical_address: PhysicalAddress, flags: PagingFlags) -> VirtualAddress {
     let virtual_address = VirtualAddress::to_kernel(physical_address);
-    paging_table.map_page(virtual_address, physical_address, flags);
+
+    let aligned_physical_address = physical_address.align(PAGE_SIZE);
+    let aligned_virtual_address = virtual_address.align(PAGE_SIZE);
+
+    let mut paging_table = kernel_paging_table();
+    paging_table.map_page(aligned_virtual_address, aligned_physical_address, flags);
+
     virtual_address
 }
 
@@ -44,9 +55,9 @@ pub unsafe fn switch_to_kernel_paging_table(max_available_physical_address: Phys
 
     // Compute how many L2, L3 and L4 we need
     // Note: We'll use huge pages (2 MiB) instead of traditional pages (4 KiB)
-    let l4_required_count = max_available_physical_address.align(L4_SIZE).value() / L4_SIZE;
-    let l3_required_count = max_available_physical_address.align(L3_SIZE).value() / L3_SIZE;
-    let l2_required_count = max_available_physical_address.align(L2_SIZE).value() / L2_SIZE;
+    let l4_required_count = max_available_physical_address.next_multiple_of(L4_SIZE).value() / L4_SIZE;
+    let l3_required_count = max_available_physical_address.next_multiple_of(L3_SIZE).value() / L3_SIZE;
+    let l2_required_count = max_available_physical_address.next_multiple_of(L2_SIZE).value() / L2_SIZE;
 
     // In this kernel, we assume we can cover and access all physical memory through the
     // last top-level page entry, but if we can't do that, we should panic immediately.
@@ -56,10 +67,8 @@ pub unsafe fn switch_to_kernel_paging_table(max_available_physical_address: Phys
     assert!(l4_required_count == 1, "Top-level kernel page entry can not cover all physical memory");
 
     const PAGE_ENTRY_COUNT_PER_LEVEL: usize = 512;
-    let l4_count = PAGE_ENTRY_COUNT_PER_LEVEL - 1; // The last entry points to the first entry (kernel page entry)
-    let l3_count = PAGE_ENTRY_COUNT_PER_LEVEL * l4_count;
-    // Here we actually base the number of entries to the required count,
-    // because the number of entries start becoming significant in terms of memory.
+    let l4_count = PAGE_ENTRY_COUNT_PER_LEVEL;
+    let l3_count = l3_required_count.next_multiple_of(PAGE_ENTRY_COUNT_PER_LEVEL);
     let l2_count = l2_required_count.next_multiple_of(PAGE_ENTRY_COUNT_PER_LEVEL);
 
     // Allocate all the entries
@@ -72,17 +81,21 @@ pub unsafe fn switch_to_kernel_paging_table(max_available_physical_address: Phys
     let entries_size = entries.capacity() * mem::size_of::<u64>();
     core::ptr::write_bytes(entries.as_mut_ptr(), 0, entries_size);
 
-    let flags = PagingEntryFlags::Writable.bits() | PagingEntryFlags::Present.bits();
+    let flags = (
+        PagingEntryFlags::PageSizeExtension |
+        PagingEntryFlags::Writable |
+        PagingEntryFlags::Present
+    ).bits();
 
     // Identity map L4s
     for index in 0..l4_required_count {
-        let address = l3_base.add(index * PAGE_ENTRY_COUNT_PER_LEVEL) as u64;
+        let address = to_physical_address_u64(l3_base.add(index * PAGE_ENTRY_COUNT_PER_LEVEL) as u64);
         *l4_base.add(index) = address | flags;
     }
 
     // Identity map L3s
     for index in 0..l3_required_count {
-        let address = l2_base.add(index * PAGE_ENTRY_COUNT_PER_LEVEL) as u64;
+        let address = to_physical_address_u64(l2_base.add(index * PAGE_ENTRY_COUNT_PER_LEVEL) as u64);
         *l3_base.add(index) = address | flags;
     }
 
@@ -91,9 +104,9 @@ pub unsafe fn switch_to_kernel_paging_table(max_available_physical_address: Phys
         *l2_base.add(index) = (index * PAGE_SIZE) as u64 | flags;
     }
 
-    // Map the kernel page entry
-    let kernel_page_entry = l4_base.add(l4_count - 1);
-    *kernel_page_entry = l3_base as u64 | flags;
+    // Map the kernel page entry. More info of this at the assertion above.
+    let kernel_page_entry = l4_base.add(KERNEL_ENTRY_INDEX);
+    *kernel_page_entry = to_physical_address_u64(l3_base as u64) | flags;
 
     // Switch to our new paging table
     let paging_table = PagingTable::new(Vec::leak(entries));

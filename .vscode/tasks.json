@@ -1,0 +1,29 @@
+{
+    "tasks": [
+        {
+            "type": "cargo",
+            "command": "build",
+            "args": [
+                "--target",
+                "x86_64-kernel.json"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build",
+            "label": "Build"
+        },
+        {
+            "label": "Build & Copy",
+            "type": "shell",
+            "command": "cp target/x86_64-kernel/debug/kernel ../metallium-loader/esp/efi/boot/kernel",
+            "dependsOn": [
+                "Build"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        }
+    ]
+}

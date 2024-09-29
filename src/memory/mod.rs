@@ -30,6 +30,10 @@ impl PhysicalAddress {
         PhysicalAddress(0)
     }
 
+    pub const fn to_physical(address: VirtualAddress) -> PhysicalAddress {
+        PhysicalAddress(mapper::to_physical_address(address.value()))
+    }
+
     pub fn is_aligned(self, alignment: usize) -> bool {
         assert!((alignment & (alignment - 1)) == 0, "Alignment must be power of two");
         (self.0 & (alignment - 1)) == 0
@@ -39,12 +43,16 @@ impl PhysicalAddress {
         self.is_aligned(SMALL_PAGE_SIZE)
     }
 
+    pub fn is_page_aligned(self) -> bool {
+        self.is_aligned(PAGE_SIZE)
+    }
+
     pub fn align(self, alignment: usize) -> Self {
         assert!((alignment & (alignment - 1)) == 0, "Alignment must be power of two");
         Self::new(self.0 & (!(alignment - 1)))
     }
 
-    pub fn ceil(self, alignment: usize) -> Self {
+    pub fn next_multiple_of(self, alignment: usize) -> Self {
         assert!((alignment & (alignment - 1)) == 0, "Alignment must be power of two");
         Self::new((self.0 + alignment - 1) & (!(alignment - 1)))
     }
@@ -94,12 +102,16 @@ impl VirtualAddress {
         self.is_aligned(SMALL_PAGE_SIZE)
     }
 
+    pub fn is_page_aligned(self) -> bool {
+        self.is_aligned(PAGE_SIZE)
+    }
+
     pub fn align(self, alignment: usize) -> Self {
         assert!((alignment & (alignment - 1)) == 0, "Alignment must be power of two");
         Self(self.0 & (!(alignment - 1)))
     }
 
-    pub fn ceil(self, alignment: usize) -> Self {
+    pub fn next_multiple_of(self, alignment: usize) -> Self {
         assert!((alignment & (alignment - 1)) == 0, "Alignment must be power of two");
         Self((self.0 + alignment - 1) & (!(alignment - 1)))
     }
