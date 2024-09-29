@@ -374,7 +374,7 @@ impl PhysicalBuddyAllocator {
         debug_write_line!("Physical buddy allocator: Total of {} MiB available memory", total * L0_SIZE / MiB);
     }
 
-    pub fn initialize(&mut self, base: PhysicalAddress, regions: &Regions, kernel_end: PhysicalAddress) {
+    pub fn initialize(&mut self, base: PhysicalAddress, regions: &Regions, kernel_end: PhysicalAddress) -> PhysicalAddress {
         // Note: Notice how we initialize upper layer variable below
         assert!(base.value() >= mem::size_of::<Layer>(), "Physical base address is too small");
         self.layers = base.value() as *mut Layer;
@@ -393,6 +393,8 @@ impl PhysicalBuddyAllocator {
             self.reserve(regions, max_available_physical_address);
             self.add_available_slabs(max_available_physical_address, kernel_end);
         }
+
+        max_available_physical_address
     }
 
     fn get_layer_index_by_size(bytes: usize) -> Option<usize> {

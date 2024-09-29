@@ -5,6 +5,7 @@ pub mod serial;
 pub const MSR_GS_BASE: usize = 0xc0000101;
 
 extern "C" {
+    pub fn write_cr3(value: u64) -> u64;
     pub fn read_cr3() -> u64;
 
     // Note: MSR = Model Specific Register

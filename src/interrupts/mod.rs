@@ -1,4 +1,4 @@
-use crate::{debug_write_line, memory::{mapper, GiB, KERNEL_CODE_SELECTOR, PAGE_SIZE}};
+use crate::{debug_write_line, memory::{mapper, GiB, KERNEL_CODE_SELECTOR, SMALL_PAGE_SIZE}};
 use core::{mem, ptr, slice};
 
 pub mod apic;
@@ -100,8 +100,8 @@ unsafe fn initialize_unsafe(
 pub fn initialize() {
     unsafe {
         let idtr_address = mapper::to_kernel(interrupts_tables.as_ptr()) as u64;
-        let idt_address = idtr_address + (PAGE_SIZE as u64);
-        let interrupt_stubs_address = idt_address + (PAGE_SIZE as u64);
+        let idt_address = idtr_address + (SMALL_PAGE_SIZE as u64);
+        let interrupt_stubs_address = idt_address + (SMALL_PAGE_SIZE as u64);
         initialize_unsafe(idtr_address, idt_address, interrupt_stubs_address);
     }
 }

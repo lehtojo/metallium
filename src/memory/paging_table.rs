@@ -1,6 +1,6 @@
 use super::{PhysicalAddress, VirtualAddress, mapper};
+use crate::{debug_write_line, low::x64::write_cr3};
 use alloc::{boxed::Box, vec};
-use crate::debug_write_line;
 use bitflags::bitflags;
 use core::slice;
 
@@ -80,8 +80,8 @@ impl<'a> PagingTable<'a> {
     }
 
     pub fn map_page(&mut self, virtual_address: VirtualAddress, physical_address: PhysicalAddress, flags: PagingFlags) {
-        assert!(virtual_address.is_page_aligned(), "Virtual address was not page aligned");
-        assert!(physical_address.is_page_aligned(), "Physical address was not page aligned");
+        assert!(virtual_address.is_small_page_aligned(), "Virtual address was not page aligned");
+        assert!(physical_address.is_small_page_aligned(), "Physical address was not page aligned");
 
         debug_write_line!("Paging table: Mapping {:#X} to {:#X}", virtual_address.value(), physical_address.value());
 
@@ -163,6 +163,13 @@ impl<'a> PagingTable<'a> {
             unsafe {
                 flush_tlb();
             }
+        }
+    }
+
+    pub fn switch(&self) {
+        unsafe {
+            write_cr3(self.entries.as_ptr() as u64);
+            flush_tlb(); // Todo: Verify this is needed?
         }
     }
 }

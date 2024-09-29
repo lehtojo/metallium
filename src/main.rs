@@ -95,7 +95,7 @@ unsafe fn print_region_info(info: &BootInfo) {
     }
 }
 
-unsafe fn allocate_physical_memory_manager(info: &BootInfo) {
+unsafe fn allocate_physical_memory_manager(info: &BootInfo) -> PhysicalAddress {
     // Find the first available region capable of containing the physical memory allocator
     let regions = &info.regions;
 
@@ -111,15 +111,15 @@ unsafe fn allocate_physical_memory_manager(info: &BootInfo) {
             region.end >= kernel_end.value() {
             debug_write_line!("Boot: Placing physical buddy allocator at {:#X}", region.start);
 
-            physical_buddy_allocator::instance.lock().initialize(
+            return physical_buddy_allocator::instance.lock().initialize(
                 region.start.into(),
                 regions,
                 kernel_end
             );
-
-            return
         }
     }
+
+    panic!("Failed to allocate the physical memory manager");
 }
 
 // Todo: We need larger stack
@@ -134,7 +134,11 @@ pub unsafe extern "C" fn _start(info_pointer: *const BootInfo) -> ! {
     let info = &*info_pointer;
     clear_screen(&info);
     print_region_info(&info);
-    allocate_physical_memory_manager(&info);
+    let max_available_physical_address = allocate_physical_memory_manager(&info);
+
+    // We can't rely on the paging table provided by UEFI, because
+    // the table might use gigantic pages (1 GiB)
+    // mapper::switch_to_kernel_paging_table(max_available_physical_address);
 
     interrupts::initialize();
     interrupts::apic::initialize(PhysicalAddress::new(info.rsdp_physical_address as usize));

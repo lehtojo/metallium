@@ -10,7 +10,8 @@ pub const KiB: usize = 0x400;
 pub const MiB: usize = 0x100000;
 #[allow(non_upper_case_globals)]
 pub const GiB: usize = 0x40000000;
-pub const PAGE_SIZE: usize = 0x1000;
+pub const SMALL_PAGE_SIZE: usize = 0x1000;
+pub const PAGE_SIZE: usize = 0x200000;
 
 pub const KERNEL_CODE_SELECTOR: u16 = 0x8;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
@@ -34,8 +35,8 @@ impl PhysicalAddress {
         (self.0 & (alignment - 1)) == 0
     }
 
-    pub fn is_page_aligned(self) -> bool {
-        self.is_aligned(PAGE_SIZE)
+    pub fn is_small_page_aligned(self) -> bool {
+        self.is_aligned(SMALL_PAGE_SIZE)
     }
 
     pub fn align(self, alignment: usize) -> Self {
@@ -89,8 +90,8 @@ impl VirtualAddress {
         (self.0 & (alignment - 1)) == 0
     }
 
-    pub fn is_page_aligned(self) -> bool {
-        self.is_aligned(PAGE_SIZE)
+    pub fn is_small_page_aligned(self) -> bool {
+        self.is_aligned(SMALL_PAGE_SIZE)
     }
 
     pub fn align(self, alignment: usize) -> Self {
